@@ -16,8 +16,12 @@ class EncoderConfig:
     patch_size: int
     layer_norm_eps: float = 1e-6
     attention_dropout: float = 0.0
-    head_dim: int = hidden_size // num_attention_heads
-    num_image_tokens: int = (image_size // patch_size) ** 2
+    head_dim: int = None 
+    num_image_tokens: int = None 
+
+    def __post_init__(self):
+        self.head_dim = self.hidden_size // self.num_attention_heads
+        self.num_image_tokens = (self.image_size // self.patch_size) ** 2
 
 
 class EncoderEmbeddings(nn.Module):
