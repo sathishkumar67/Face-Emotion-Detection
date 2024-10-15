@@ -32,14 +32,14 @@ class EncoderEmbeddings(nn.Module):
         # Convolve the image into patches of size `patch_size`
         self.patch_embedding = nn.Conv2d(
             in_channels=config.num_channels,
-            out_channels=self.config.embed_dim,
+            out_channels=self.config.hidden_size,
             kernel_size=self.config.patch_size,
             stride=self.config.patch_size,
             padding="valid", # This indicates no padding is added
         )
 
         # Positional embedding for image tokens
-        self.position_embedding = nn.Embedding(self.config.num_image_tokens, self.config.embed_dim)
+        self.position_embedding = nn.Embedding(self.config.num_image_tokens, self.config.hidden_size)
         self.register_buffer(
             "position_ids",
             torch.arange(self.config.num_image_tokens).expand((1, -1)),
@@ -110,12 +110,20 @@ class EncoderLayer(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         # residual: [Batch_Size, Num_Patches, Embed_Dim]
         residual = hidden_states
-
-        # hidden_states: [Batch_Size, Num_Patches, Embed_Dim] -> [Batch_Size, Num_Patches, Embed_Dim]
-        hidden_states = residual + self.layer_norm1(self.self_attn(hidden_states=hidden_states))
-
-        # residual: [Batch_Size, Num_Patches, Embed_Dim]
-        hidden_states = residual + self.layer_norm2(self.mlp(hidden_states))
+        # [Batch_Size, Num_Patches, Embed_Dim] -> [Batch_Size, Num_Patches, Embed_Dim]
+        hidden_states = self.layer_norm1(hidden_states)
+        # [Batch_Size, Num_Patches, Embed_Dim] -> [Batch_Size, Num_Patches, Embed_Dim]
+        hidden_states = self.self_attn(hidden_states=hidden_states)
+        # [Batch_Size, Num_Patches, Embed_Dim]
+        hidden_states = residual + hidden_states
+        # residual: [Batch_Size, Num_Patches, Embed_Dim] 
+        residual = hidden_states
+        # [Batch_Size, Num_Patches, Embed_Dim] -> [Batch_Size, Num_Patches, Embed_Dim]
+        hidden_states = self.layer_norm2(hidden_states)
+        # [Batch_Size, Num_Patches, Embed_Dim] -> [Batch_Size, Num_Patches, Embed_Dim]
+        hidden_states = self.mlp(hidden_states)
+        # [Batch_Size, Num_Patches, Embed_Dim]
+        hidden_states = residual + hidden_states
         
         return hidden_states
 
@@ -127,9 +135,12 @@ class EncoderBlock(nn.Module):
         self.layers = nn.ModuleList([EncoderLayer(config) for _ in range(config.num_hidden_layers)])
 
     def forward(self, inputs_embeds: torch.Tensor) -> torch.Tensor:
+        # inputs_embeds: [Batch_Size, Num_Patches, Embed_Dim]
+        hidden_states = inputs_embeds
+        
         for encoder_layer in self.layers:
             # [Batch_Size, Num_Patches, Embed_Dim] -> [Batch_Size, Num_Patches, Embed_Dim]
-            hidden_states = encoder_layer(inputs_embeds)
+            hidden_states = encoder_layer(hidden_states)
 
         return hidden_states
 
