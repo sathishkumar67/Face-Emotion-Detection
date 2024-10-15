@@ -14,7 +14,7 @@ class EncoderConfig:
     num_attention_heads: int
     num_channels: int
     patch_size: int
-    layer_norm_eps: float = 1e-6
+    rms_norm_eps: float = 1e-6
     attention_dropout: float = 0.0
     head_dim: int = None 
     num_image_tokens: int = None 
@@ -22,6 +22,20 @@ class EncoderConfig:
     def __post_init__(self):
         self.head_dim = self.hidden_size // self.num_attention_heads
         self.num_image_tokens = (self.image_size // self.patch_size) ** 2
+
+
+class RMSNorm(torch.nn.Module):
+    def __init__(self, dim: int, eps: float) -> None:
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def _norm(self, x) -> torch.Tensor:
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+    def forward(self, x) -> torch.Tensor:
+        output = self._norm(x.float()).type_as(x)
+        return output * self.weight
 
 
 class EncoderEmbeddings(nn.Module):
@@ -102,9 +116,9 @@ class EncoderLayer(nn.Module):
         super().__init__()
         self.config = config
         self.self_attn = EncoderAttention(config)
-        self.layer_norm1 = nn.LayerNorm(self.config.hidden_size, eps=config.layer_norm_eps)
+        self.layer_norm1 = RMSNorm(self.config.hidden_size, eps=config.rms_norm_eps)
         self.mlp = EncoderMLP(config)
-        self.layer_norm2 = nn.LayerNorm(self.config.hidden_size, eps=config.layer_norm_eps)
+        self.layer_norm2 = RMSNorm(self.config.hidden_size, eps=config.rms_norm_eps)
 
     # Ignore copy
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -152,7 +166,7 @@ class Encoder(nn.Module):
 
         self.embeddings = EncoderEmbeddings(config)
         self.encoder = EncoderBlock(config)
-        self.post_layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.post_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
     
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         # [Batch_Size, Num_Channels, Image_Height, Image_Width] -> [Batch_Size, Num_Patches, Embed_Dim]
