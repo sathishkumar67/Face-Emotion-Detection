@@ -170,7 +170,8 @@ class Encoder(nn.Module):
     
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         # [Batch_Size, Num_Channels, Image_Height, Image_Width] -> [Batch_Size, Num_Patches, Embed_Dim]
-        return self.post_layernorm(self.encoder(inputs_embeds=self.embeddings(pixel_values)))
+        # average pooling over height and width dimensions
+        return torch.mean(self.post_layernorm(self.encoder(inputs_embeds=self.embeddings(pixel_values))), dim=1)
 
 
 class EncoderModel(nn.Module):
@@ -179,7 +180,7 @@ class EncoderModel(nn.Module):
         super().__init__()
         self.config = config
         self.vision_model = Encoder(config)
-
+    
     def forward(self, pixel_values) -> torch.Tensor:
         # [Batch_Size, Channels, Height, Width] -> [Batch_Size, Num_Patches, Embed_Dim]
         return self.vision_model(pixel_values=pixel_values) 
